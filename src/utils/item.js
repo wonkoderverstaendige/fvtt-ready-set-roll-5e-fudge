@@ -435,7 +435,7 @@ function _addFieldDamageButton(fields, item) {
 
 /**
  * Adds a render field for item attack roll.
- * @param {Array} fields The current array of fields to add to. 
+ * @param {Array} fields The current array of fields to add to.
  * @param {Item} item The item from which to derive the field.
  * @param {Object} params Additional parameters for the attack roll.
  * @private
@@ -444,22 +444,84 @@ async function _addFieldAttack(fields, item, params) {
     if (item.hasAttack) {
         // The dnd5e default attack roll automatically consumes ammo without any option for external configuration.
         // This code will bypass this consumption since we have already consumed or not consumed via the roll config earlier.
-        let ammoConsumeAmount = null;
+        let ammoConsumeBypass = false;
         if (item.system?.consume?.type === "ammo") {
-            ammoConsumeAmount = item.system?.consume?.amount ?? 0;
-            item.system.consume.amount = 0;
+            item.system.consume.type = "rsr5e";
+            ammoConsumeBypass = true;
         }
 
-        let roll = await item.rollAttack({
-            fastForward: true,
-            chatMessage: false,
-            advantage: params?.advMode > 0 ?? false,
-            disadvantage: params?.advMode < 0 ?? false
-        });
+        let roll;
+        params.isFudge = false;
+        if (params.advMode === Infinity) {
+            if (!game.user.isGM) {
+                params.advMode = 0;
+            } else {
+                params.isFudge = true;
+                console.log("We are fudging!");
+            }
+        }
 
-        // Reset ammo to avoid later issues.
-        if (ammoConsumeAmount) {
-            item.system.consume.amount = ammoConsumeAmount;
+        // We are messing with the rolls in evil ways...
+        if (params.isFudge) {
+            function getDialogOutput() {
+                return new Promise((resolve, reject) => {
+
+                    function handleSubmit(html, adv) {
+                        const formElement = html[0].querySelector('form');
+                        const formData = new FormDataExtended(formElement);
+                        const formDataObject = formData.toObject();
+                        formDataObject.advMode = adv;
+
+                        return formDataObject
+                    }
+
+
+                    const dialog = new Dialog({
+                        title: "Fudge!",
+                        content: `<form>
+                              <label>Minimum <input name="minimum" type="number" value="0" /></label>
+                              <label>Maximum <input name="maximum" type="number" value="40"/></label>
+                            </form>`,
+                        buttons: {
+                            disadv: { label: "Disadvantage", callback: (html) => { resolve(handleSubmit(html, -1)) } },
+                            normal: { label: "Normal", callback: (html) => { resolve(handleSubmit(html, 0)) } },
+                            adv: { label: "Advantage", callback: (html) => { resolve(handleSubmit(html, 1)) } },
+                        },
+                        close: () => { reject() }
+                    });
+                    dialog.render(true);
+                });
+            }
+            const fudgeConfig = await getDialogOutput();
+            console.log(fudgeConfig);
+
+            params.advMode = fudgeConfig.advMode;
+
+            for (let num_roll=0; num_roll<10000; num_roll++) {
+                roll = await item.rollAttack({
+                    fastForward: true,
+                    chatMessage: false,
+                    advantage: params?.advMode > 0 ?? false,
+                    disadvantage: params?.advMode < 0 ?? false
+                });
+
+                if (roll.total <= fudgeConfig.maximum && roll.total >= fudgeConfig.minimum) {
+                    console.log(`Fudged after ${num_roll} rolls.`);
+                    break;
+                }
+            }
+        } else {
+            roll = await item.rollAttack({
+                fastForward: true,
+                chatMessage: false,
+                advantage: params?.advMode > 0 ?? false,
+                disadvantage: params?.advMode < 0 ?? false
+            });
+        }
+
+        // Reset ammo type to avoid later issues.
+        if (ammoConsumeBypass) {
+            item.system.consume.type = "ammo";
         }
 
         // Adds a seperator for UI clarity.

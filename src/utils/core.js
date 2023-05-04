@@ -31,10 +31,13 @@ export class CoreUtility {
     /**
      * Checks an event for advantage/disadvantage modifier keys.
      * @param {object} event Event data to check.
-     * @returns {number} An advantage mode: -1 is disadvantage, 0 is normal, 1 is advantage. 
+     * @returns {number} An advantage mode: -1 is disadvantage, 0 is normal, 1 is advantage.
      */
     static eventToAdvantage(event = {}) {
         const mode = SettingsUtility.getSettingValue(SETTING_NAMES.ROLL_MODIFIER_MODE);
+
+        // if we hold both and we are the GM, we want to fudge!
+        if (game.user.isGM && event.shiftKey && event.ctrlKey) return Infinity;
 
         switch(mode) {
             case 0:

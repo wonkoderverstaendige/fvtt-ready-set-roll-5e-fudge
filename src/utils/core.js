@@ -36,7 +36,7 @@ export class CoreUtility {
     static eventToAdvantage(event = {}) {
         const mode = SettingsUtility.getSettingValue(SETTING_NAMES.ROLL_MODIFIER_MODE);
 
-        // if we hold both and we are the GM, we want to fudge!
+        // if we hold both shift+ctrl and we are the GM, we want to fudge!
         if (game.user.isGM && event.shiftKey && event.ctrlKey) return Infinity;
 
         switch(mode) {
@@ -52,7 +52,7 @@ export class CoreUtility {
     /**
      * Checks an event for alternate roll modifier key (if the relevant setting is enabled).
      * @param {object} event Event data to check.
-     * @returns {Boolean} If the roll should be an alternate one. 
+     * @returns {Boolean} If the roll should be an alternate one.
      */
     static eventToAltRoll(event = {}) {
         const altRollEnabled = SettingsUtility.getSettingValue(SETTING_NAMES.ALT_ROLL_ENABLED);

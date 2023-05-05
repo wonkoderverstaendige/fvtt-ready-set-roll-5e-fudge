@@ -444,10 +444,10 @@ async function _addFieldAttack(fields, item, params) {
     if (item.hasAttack) {
         // The dnd5e default attack roll automatically consumes ammo without any option for external configuration.
         // This code will bypass this consumption since we have already consumed or not consumed via the roll config earlier.
-        let ammoConsumeBypass = false;
+        let ammoConsumeAmount = null;
         if (item.system?.consume?.type === "ammo") {
-            item.system.consume.type = "rsr5e";
-            ammoConsumeBypass = true;
+            ammoConsumeAmount = item.system?.consume?.amount ?? 0;
+            item.system.consume.amount = 0;
         }
 
         let roll;
@@ -520,8 +520,8 @@ async function _addFieldAttack(fields, item, params) {
         }
 
         // Reset ammo type to avoid later issues.
-        if (ammoConsumeBypass) {
-            item.system.consume.type = "ammo";
+        if (ammoConsumeAmount) {
+            item.system.consume.amount = ammoConsumeAmount;
         }
 
         // Adds a seperator for UI clarity.

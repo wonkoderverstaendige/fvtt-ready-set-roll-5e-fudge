@@ -2,7 +2,7 @@ import { MODULE_SHORT } from "../module/const.js";
 import { CoreUtility } from "./core.js";
 import { LogUtility } from "./log.js";
 import { FIELD_TYPE } from "./render.js";
-import { RollUtility, ROLL_TYPE } from "./roll.js";
+import { RollUtility, ROLL_TYPE, Fudge } from "./roll.js";
 import { SettingsUtility, SETTING_NAMES } from "./settings.js";
 
 /**
@@ -450,74 +450,19 @@ async function _addFieldAttack(fields, item, params) {
             item.system.consume.amount = 0;
         }
 
-        let roll;
-        params.isFudge = false;
-        if (params.advMode === Infinity) {
-            if (!game.user.isGM) {
-                params.advMode = 0;
-            } else {
-                params.isFudge = true;
-                console.log("We are fudging!");
-            }
+        // roll configuration
+        const rollCfg = {
+            fastForward: true,
+            chatMessage: false,
+            advantage: params?.advMode > 0 ?? false,
+            disadvantage: params?.advMode < 0 ?? false
         }
 
-        // We are messing with the rolls in evil ways...
-        if (params.isFudge) {
-            function getDialogOutput() {
-                return new Promise((resolve, reject) => {
-
-                    function handleSubmit(html, adv) {
-                        const formElement = html[0].querySelector('form');
-                        const formData = new FormDataExtended(formElement);
-                        const formDataObject = formData.toObject();
-                        formDataObject.advMode = adv;
-
-                        return formDataObject
-                    }
-
-
-                    const dialog = new Dialog({
-                        title: "Fudge!",
-                        content: `<form>
-                              <label>Minimum <input name="minimum" type="number" value="0" /></label>
-                              <label>Maximum <input name="maximum" type="number" value="40"/></label>
-                            </form>`,
-                        buttons: {
-                            disadv: { label: "Disadvantage", callback: (html) => { resolve(handleSubmit(html, -1)) } },
-                            normal: { label: "Normal", callback: (html) => { resolve(handleSubmit(html, 0)) } },
-                            adv: { label: "Advantage", callback: (html) => { resolve(handleSubmit(html, 1)) } },
-                        },
-                        close: () => { reject() }
-                    });
-                    dialog.render(true);
-                });
-            }
-            const fudgeConfig = await getDialogOutput();
-            console.log(fudgeConfig);
-
-            params.advMode = fudgeConfig.advMode;
-
-            for (let num_roll=0; num_roll<10000; num_roll++) {
-                roll = await item.rollAttack({
-                    fastForward: true,
-                    chatMessage: false,
-                    advantage: params?.advMode > 0 ?? false,
-                    disadvantage: params?.advMode < 0 ?? false
-                });
-
-                if (roll.total <= fudgeConfig.maximum && roll.total >= fudgeConfig.minimum) {
-                    console.log(`Fudged after ${num_roll} rolls.`);
-                    break;
-                }
-            }
-        } else {
-            roll = await item.rollAttack({
-                fastForward: true,
-                chatMessage: false,
-                advantage: params?.advMode > 0 ?? false,
-                disadvantage: params?.advMode < 0 ?? false
-            });
-        }
+        // normal roll, or fudge...
+        const doFudge = Fudge.checkFudge(params);
+        const roll = await (doFudge ?
+            Fudge.fudgeRoll(item, item.rollAttack.bind(item), rollCfg, params) :
+            item.rollAttack(rollCfg))
 
         // Reset ammo type to avoid later issues.
         if (ammoConsumeAmount) {
@@ -552,7 +497,7 @@ async function _addFieldDamage(fields, item, params) {
             return;
         }
 
-        const roll = await item.rollDamage({
+        const rollCfg = {
             critical: false,
             versatile: params?.versatile ?? false,
             spellLevel: params?.slotLevel,
@@ -560,7 +505,11 @@ async function _addFieldDamage(fields, item, params) {
                 fastForward: true,
                 chatMessage: false
             }
-        });
+        }
+
+        console.log(params);
+
+        const roll = await item.rollDamage(rollCfg);
 
         let damageTermGroups = [];
         let damageContextGroups = [];

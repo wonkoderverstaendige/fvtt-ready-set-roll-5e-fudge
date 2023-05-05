@@ -478,3 +478,105 @@ function _countCritsFumbles(die, options)
 
     return { crit, fumble }
 }
+
+export class Fudge {
+    /**
+     * Check advantage mode if we are attempting to fudge. This would be indicated with the `advMode`
+     * being Infinity, instead of in {-1, 0, 1}.
+     * @param params
+     * @returns {boolean}
+     */
+    static checkFudge(params) {
+
+        if (params.advMode !== Infinity) return false
+        if (!game.user.isGM) {
+            params.advMode = 0;
+            return false;
+        }
+
+        params.isFudge = true;
+        console.log(`We are fudging.`);
+        return true;
+    }
+
+    /**
+     * Prompt user to configure the fudge in a dialog box.
+     * What limits and if rolled normally or with advantage/disadvantage.
+     * @returns {Promise<unknown>}
+     */
+    static dialogFudgeOptions(name = '', formula='', minimum=0, maximum=100) {
+        return new Promise((resolve, reject) => {
+            function handleSubmit(html, adv) {
+                const formElement = html[0].querySelector('form');
+                const formData = new FormDataExtended(formElement);
+                const formDataObject = formData.toObject();
+                formDataObject.advMode = adv;
+
+                return formDataObject
+            }
+
+            const dialog = new Dialog({
+                title: `${name} Fudge!`,
+                content: `<form>
+                      <label>Formula <input name="formula" type="text" value="${formula}" disabled /></label>
+                      <label>Minimum <input name="minimum" type="number" value="${minimum}" /></label>
+                      <label>Maximum <input name="maximum" type="number" value="${maximum}" /></label>
+                    </form>`,
+                buttons: {
+                    disadv: { label: "Disadvantage", callback: (html) => { resolve(handleSubmit(html, -1)) } },
+                    normal: { label: "Normal", callback: (html) => { resolve(handleSubmit(html, 0)) } },
+                    adv: { label: "Advantage", callback: (html) => { resolve(handleSubmit(html, 1)) } },
+                },
+                close: () => { reject() }
+            });
+            dialog.render(true);
+        });
+    }
+
+    /**
+     *
+     * @param rollObj Object that is rolled on. E.g. an item.
+     * @param rollFun Roll function on the object. E.g. item.rollAttack
+     * @param rollCfg Original configuration of the roll pre-fudge.
+     * @param params Parameters of the roll setup.
+     * @returns {Promise<void>}
+     */
+    static async fudgeRoll(rollObj, rollFun, rollCfg, params) {
+        let roll;
+
+        // pre-roll to get some data, don't know how else to do this
+        const setupCfg = deepClone(rollCfg);
+        setupCfg.advantage = false;
+        setupCfg.disadvantage = false;
+        setupCfg.fastForward = true;
+
+        roll = await rollFun(setupCfg);
+        const formula = roll.formula;
+
+        roll = new Roll(formula);
+        await roll.evaluate({minimize: true});
+        const minimum = roll.total;
+
+        roll = new Roll(formula);
+        await roll.evaluate({maximize: true});
+        const maximum = roll.total;
+
+        const fudgeConfig = await Fudge.dialogFudgeOptions(name=rollObj.name, formula, minimum, maximum);
+        console.log(fudgeConfig);
+        params.advMode = fudgeConfig.advMode;
+
+        rollCfg.advantage = params.advMode > 0;
+        rollCfg.disadvantage = params.advMode < 0;
+
+        for (let num_roll=0; num_roll<10000; num_roll++) {
+            roll = await rollFun(rollCfg);
+
+            if (roll.total <= fudgeConfig.maximum && roll.total >= fudgeConfig.minimum) {
+                console.log(`Fudged after ${num_roll} rolls.`);
+                break;
+            }
+        }
+
+        return roll;
+    }
+}
